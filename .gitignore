@@ -1,0 +1,12 @@
+.DS_Store
+.build/
+.swiftpm/
+*.xcodeproj/xcuserdata/
+DerivedData/
+/StampSign.app/
+/*.zip
+
+# Документы и подписи содержат персональные данные: в репозиторий не добавляются
+*.sig
+*.p7s
+*.pdf
