@@ -5,9 +5,22 @@ enum Streebog {
     typealias W = [UInt64]  // 512 бит = 8 слов (little-endian)
 
     private static let T = StreebogTables.T
-    private static let C: [W] = StreebogTables.C.map { b in
-        (0..<8).map { i in (0..<8).reduce(UInt64(0)) { $0 | UInt64(b[i * 8 + $1]) << UInt64(8 * $1) } }
-    }
+    private static let C: [W] = {
+        var result: [W] = []
+        for b in StreebogTables.C {
+            var w = W(repeating: 0, count: 8)
+            for i in 0..<8 {
+                var v: UInt64 = 0
+                for k in 0..<8 {
+                    let byte = UInt64(b[i * 8 + k])
+                    v |= byte << UInt64(8 * k)
+                }
+                w[i] = v
+            }
+            result.append(w)
+        }
+        return result
+    }()
 
     private static func lps(_ x: W) -> W {
         var out = W(repeating: 0, count: 8)
