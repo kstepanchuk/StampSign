@@ -14,3 +14,7 @@ DerivedData/
 *.sig
 *.p7s
 *.pdf
+!Desktop/StampSign.Pdf/
+!Desktop/StampSign.Pdf/**
+Desktop/StampSign.Pdf/bin/
+Desktop/StampSign.Pdf/obj/
