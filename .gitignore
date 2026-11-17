@@ -1,6 +1,10 @@
 .DS_Store
 .build/
 .swiftpm/
+**/bin/
+**/obj/
+Desktop/StampSign.Desktop/tools/stamp-pdf
+Desktop/StampSign.Desktop/tools/stamp-pdf.exe
 *.xcodeproj/xcuserdata/
 DerivedData/
 /StampSign.app/

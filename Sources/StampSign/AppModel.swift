@@ -29,6 +29,7 @@ final class AppModel: ObservableObject {
     @Published var stampImage: NSImage?
 
     private let defaults = UserDefaults.standard
+    private var extractedPDFURL: URL?
 
     static let zones: [(id: String, name: String)] = [
         ("Europe/Kaliningrad", "Калининград (UTC+2)"), ("Europe/Moscow", "Москва (UTC+3)"),
@@ -84,16 +85,19 @@ final class AppModel: ObservableObject {
         verifyTask?.cancel()
         verification = nil
         let att = attached
-        guard let pdf = pdfURL, sigURL != nil || att != nil else { verifying = false; return }
+        let pdf = pdfURL
+        guard sigURL != nil || att != nil else { verifying = false; return }
         let sig = sigURL
         verifying = true
         verifyTask = Task { [weak self] in
             let result = await Task.detached(priority: .userInitiated) { () -> VerificationResult? in
-                if let sig, let d = try? Data(contentsOf: pdf), let s = try? Data(contentsOf: sig) {
-                    return SigVerifier.verify(sig: s, document: d)
-                }
-                if let att { return SigVerifier.verify(sig: att.signature, document: att.document) }
-                return nil
+                let signature: Data
+                if let sig, let bytes = try? Data(contentsOf: sig) { signature = bytes }
+                else if let att { signature = att.signature }
+                else { return nil }
+                let document = pdf.flatMap { try? Data(contentsOf: $0) } ?? att?.document
+                guard document != nil || (try? CMSContent.extract(from: signature)) != nil else { return nil }
+                return SigVerifier.verify(sig: signature, document: document)
             }.value
             guard !Task.isCancelled else { return }
             self?.verification = result
@@ -123,10 +127,20 @@ final class AppModel: ObservableObject {
 
     private func setSig(_ url: URL) {
         do {
-            info = try SigParser.parse(Data(contentsOf: url))
+            let signature = try Data(contentsOf: url)
+            info = try SigParser.parse(signature)
             sigURL = url
             attached = nil
             fromAttachment = false
+            // Attached CMS often contains the original PDF itself. Open that payload
+            // directly so the user can inspect, stamp, and export it without a second file.
+            if let content = try CMSContent.extract(from: signature), content.starts(with: Data("%PDF-".utf8)) {
+                let output = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("StampSign-\(UUID().uuidString).pdf")
+                try content.write(to: output, options: .atomic)
+                extractedPDFURL = output
+                setPDF(output)
+            }
         } catch {
             info = nil
             sigURL = nil

@@ -1,0 +1,55 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="StampSign.Desktop.MainWindow"
+        Title="StampSign" Width="1100" Height="740" MinWidth="880" MinHeight="600">
+  <Grid ColumnDefinitions="*,320" RowDefinitions="Auto,*">
+    <Border Grid.Row="0" Grid.ColumnSpan="2" Padding="14" BorderBrush="#D9DDE5" BorderThickness="0,0,0,1">
+      <StackPanel Orientation="Horizontal" Spacing="10">
+        <Button Content="Открыть PDF" Click="OpenPdf" />
+        <Button Content="Открыть подпись (.sig)" Click="OpenSignature" />
+        <Button x:Name="SigningActionButton" Content="Создать подпись CryptoPro…" Click="CreateCmsSignature" IsEnabled="False" />
+        <TextBlock x:Name="FileSummary" VerticalAlignment="Center" Foreground="#596273" />
+      </StackPanel>
+    </Border>
+    <Border Grid.Row="1" Grid.Column="0" Margin="16" Background="#E8EBF0" CornerRadius="8">
+      <Grid>
+        <Image x:Name="PagePreview" Stretch="Uniform" Margin="22" />
+        <TextBlock x:Name="EmptyState" Text="Перетащите сюда PDF и .sig" HorizontalAlignment="Center"
+                   VerticalAlignment="Center" Foreground="#596273" FontSize="19" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="12" Spacing="10">
+          <Button Content="‹" Click="PreviousPage" />
+          <TextBlock x:Name="PageLabel" VerticalAlignment="Center" />
+          <Button Content="›" Click="NextPage" />
+        </StackPanel>
+      </Grid>
+    </Border>
+    <ScrollViewer Grid.Row="1" Grid.Column="1" Padding="16">
+      <StackPanel Spacing="12">
+        <TextBlock Text="Подпись" FontSize="18" FontWeight="SemiBold" />
+        <TextBlock x:Name="SignatureDetails" Text="Откройте файл подписи, чтобы посмотреть сертификат и проверить документ." TextWrapping="Wrap" />
+        <TextBlock x:Name="VerificationDetails" TextWrapping="Wrap" Foreground="#596273" />
+        <Separator />
+        <TextBlock Text="Создать CMS/CAdES подпись" FontSize="16" FontWeight="SemiBold" />
+        <ComboBox x:Name="CmsMode" SelectedIndex="0">
+          <ComboBoxItem Content="Откреплённая (.sig)" Tag="detached" />
+          <ComboBoxItem Content="Прикреплённая (.sig)" Tag="attached" />
+        </ComboBox>
+        <TextBlock Text="Подписание проходит локально через CryptoPro Browser plug-in в браузере. Файл не отправляется в облако." TextWrapping="Wrap" Foreground="#596273" FontSize="12" />
+        <Button Content="Создать подпись…" Click="CreateCmsSignature" IsEnabled="False" x:Name="CreateSignatureButton" />
+        <Separator />
+        <TextBlock Text="Размещение штампа" FontSize="16" FontWeight="SemiBold" />
+        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="6">
+          <TextBlock Grid.Row="0" Text="X, pt" VerticalAlignment="Center" />
+          <TextBox x:Name="XPosition" Grid.Row="0" Grid.Column="1" Text="20" />
+          <TextBlock Grid.Row="1" Text="Y, pt" VerticalAlignment="Center" />
+          <TextBox x:Name="YPosition" Grid.Row="1" Grid.Column="1" Text="20" />
+          <TextBlock Grid.Row="2" Text="Ширина, pt" VerticalAlignment="Center" />
+          <TextBox x:Name="StampWidth" Grid.Row="2" Grid.Column="1" Text="190" />
+        </Grid>
+        <CheckBox x:Name="AllPages" Content="Штамп на всех страницах" IsChecked="True" />
+        <Button x:Name="SaveButton" Content="Сохранить PDF со штампом…" Click="SaveStampedPdf" IsEnabled="False" />
+        <Button x:Name="PadesButton" Content="Подписать PDF в PAdES…" Click="SignPadesPdf" IsEnabled="False" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</Window>

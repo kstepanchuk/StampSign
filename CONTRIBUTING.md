@@ -4,16 +4,17 @@
 
 ## Окружение
 
-- macOS 14+, Xcode или Command Line Tools со Swift 5.9+.
-- Сборка и тесты: `swift build`, `swift test`. Приложение целиком: `./build.sh`.
+- .NET 10 и Go 1.26.
+- Общий интерфейс и PDF/CMS слой: `Desktop/StampSign.Desktop.slnx`.
+- Сборки Windows и macOS создает GitHub Actions workflow `desktop.yml`; не публикуйте отдельную Swift-версию приложения.
 
 ## Правила
 
 1. Откройте issue или обсудите идею до большого изменения.
 2. Делайте небольшие pull request'ы, на одну задачу.
-3. Для нового поведения добавляйте тесты в `Tests/StampSignTests`. Для криптографии нужны тестовые векторы из RFC или публичных стандартов.
-4. Перед PR запустите `swift test`. CI проверяет то же самое на macOS.
-5. Стиль: как в существующем коде, без лишних зависимостей. Проект намеренно собирается без сторонних пакетов.
+3. Для криптографии нужны тестовые векторы из RFC или публичных стандартов.
+4. CI собирает общий .NET app и PDF bridge на Windows и macOS.
+5. Стиль: как в существующем коде, без лишних зависимостей.
 6. Строки интерфейса на русском.
 
 ## Важно про данные
@@ -22,7 +23,7 @@
 
 ## Генерируемые файлы
 
-`StreebogTables.swift` и `GOSTCurves.swift` сгенерированы, вручную их не правят. Источник и лицензия указаны в [NOTICE.md](NOTICE.md). Иконка собирается скриптом `tools/make_icon.swift`:
+Иконка собирается скриптом `tools/make_icon.swift`:
 
 ```bash
 swift tools/make_icon.swift && iconutil -c icns Resources/AppIcon.iconset -o Resources/AppIcon.icns && rm -rf Resources/AppIcon.iconset

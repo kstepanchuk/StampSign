@@ -1,0 +1,3 @@
+# pdfcpu-sign fork used by StampSign
+
+Based on `github.com/agcom/pdfcpu-sign` at `v0.0.0-20250825194339-9a1ea7199c4d` (Apache-2.0). The Adobe CMS handler is extended with an external CMS callback so StampSign can request a CAdES signature from CryptoPro Browser plug-in without importing or exporting the user's private key. The handler creates an `/ETSI.CAdES.detached` field, reserves a fixed-size `/Contents`, inserts the externally created CMS, and pads the remaining CMS placeholder with zero bytes. pdfcpu API calls were updated for the version used by this application. The original license text is in `LICENSE`.

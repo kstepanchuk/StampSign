@@ -122,20 +122,28 @@ enum SigVerifier {
         return GOST3410(curve).verify(px: px, py: py, e: e, r: r, s: s)
     }
 
-    static func verify(sig: Data, document: Data) -> VerificationResult {
+    static func verify(sig: Data, document: Data? = nil) -> VerificationResult {
         var res = VerificationResult()
         do { try run(sig: sig, document: document, res: &res) }
         catch { res.notes.append(error.localizedDescription) }
         return res
     }
 
-    private static func run(sig: Data, document: Data, res: inout VerificationResult) throws {
+    private static func run(sig: Data, document: Data?, res: inout VerificationResult) throws {
         let raw = [UInt8](sig)
         let der = DER(d: raw)
         let root = try der.parse(0, raw.count)
         let rk = try der.kids(root)
         guard rk.count >= 2, let sd = try der.kids(rk[1]).first else { throw SigError.invalid("это не CMS SignedData") }
         let sdk = try der.kids(sd)
+        let embedded = try CMSContent.extract(from: sig)
+        // Не даём подписи с вложенными байтами незаметно подтвердить другой PDF.
+        if let document, let embedded, document != embedded {
+            res.notes.append("Вложенное содержимое CMS отличается от выбранного файла.")
+        }
+        guard let signedData = document ?? embedded else {
+            throw SigError.invalid("для откреплённой подписи нужен исходный документ")
+        }
         guard let signerSet = sdk.last, signerSet.tag == 0x31,
               let certsNode = sdk.dropFirst(3).first(where: { $0.tag == 0xA0 }),
               let signer = try der.kids(signerSet).first else { throw SigError.invalid("нет сертификатов или SignerInfo") }
@@ -182,8 +190,12 @@ enum SigVerifier {
             if ak.count >= 2, der.bytes(ak[0]) == [0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x09, 0x04],
                let v = try der.kids(ak[1]).first { messageDigest = der.bytes(v) }
         }
-        let docHash = Streebog.hash(document, bits: bits)
-        if let md = messageDigest { res.integrity = md == docHash ? .ok : .bad }
+        let docHash = Streebog.hash(signedData, bits: bits)
+        if let md = messageDigest {
+            var matches = md == docHash
+            if let embedded { matches = matches && Streebog.hash(embedded, bits: bits) == md }
+            res.integrity = matches ? .ok : .bad
+        }
 
         // 2. подпись над DER(signedAttrs) с тегом SET
         var attrsDER = Array(raw[attrs.full])

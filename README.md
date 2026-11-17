@@ -1,97 +1,52 @@
 # StampSign
 
-[![CI](https://github.com/kstepanchuk/StampSign/actions/workflows/ci.yml/badge.svg)](https://github.com/kstepanchuk/StampSign/actions/workflows/ci.yml)
-![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue)
-![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange)
+[![Desktop builds](https://github.com/kstepanchuk/StampSign/actions/workflows/desktop.yml/badge.svg)](https://github.com/kstepanchuk/StampSign/actions/workflows/desktop.yml)
+![Windows + macOS](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Приложение для macOS, которое ставит на PDF видимый штамп «ДОКУМЕНТ ПОДПИСАН ЭЛЕКТРОННОЙ ПОДПИСЬЮ» по файлу открепленной подписи (`.sig`, CMS/CAdES, ГОСТ Р 34.10-2012) и проверяет эту подпись.
-Всё работает локально: ни документы, ни подписи никуда не отправляются.
-
-*English: a native macOS app that stamps a PDF with a visible e-signature block from a detached CMS/CAdES `.sig` (Russian GOST R 34.10-2012 / Streebog), lets you place it anywhere, and verifies the signature offline. See the sections below; the UI is in Russian.*
+Кроссплатформенное приложение для PDF и российских электронных подписей. Один Avalonia/.NET интерфейс собирается для Windows и macOS.
 
 ## Возможности
 
-- **Перетащили PDF и `.sig` в окно и получили PDF со штампом.** Если рядом лежит `X.pdf.sig`, парный файл подхватывается сам.
-- **Штамп можно двигать как угодно.** Тяните мышью, угловая точка меняет размер. Есть прилипание к краям и центру (⌥ отключает), стрелки сдвигают на 1 pt (⇧ на 10 pt), кнопки «Лево», «Центр», «Право», «Верх справа» и поля X, Y, «Ширина» в pt. Можно выбрать страницу или поставить штамп на все страницы. Положение запоминается.
-- **Данные штампа берутся из подписи:** серийный номер сертификата, владелец, срок действия, время подписания. Время показывается в выбранном часовом поясе (по умолчанию московское).
-- **Проверка подписи без сторонних библиотек.** Хеш Стрибог-256/512 и ЭЦП ГОСТ Р 34.10-2012 реализованы на Swift. Проверяются целостность документа, сама подпись, срок действия сертификата и подпись УЦ на сертификате, если сертификат УЦ лежит в `.sig`.
-- **Исходник и `.sig` вкладываются в итоговый PDF** как файловые вложения. Штамп меняет файл, поэтому исходная подпись к нему не подходит. Вложения сохраняют возможность проверить подпись. Если открыть такой PDF в приложении, оно проверит подпись по вложениям.
-- Векторный штамп (шрифт Arial с кириллицей), текст исходных страниц остаётся текстом.
+- Открытие PDF и просмотр страниц.
+- Проверка откреплённых и прикреплённых CMS/CAdES подписей `.sig`.
+- Создание откреплённой или прикреплённой CMS подписи через установленный CryptoPro Browser plug-in.
+- Добавление видимого штампа и создание встроенной PAdES подписи через CryptoPro.
+- Размещение штампа по координатам, на выбранной странице или на всех страницах.
+- Передача документов signing-странице только по loopback `localhost`; файл не загружается на удалённый сервер.
+
+Для создания подписи нужен CryptoPro CSP и расширение CryptoPro Browser plug-in в поддерживаемом браузере. StampSign не получает и не экспортирует закрытый ключ. Signing page загружает официальный JavaScript bridge с `cryptopro.ru`.
+
+Проверка подписи локально подтверждает CMS подпись и целостность содержимого. Доверие к корневому УЦ и отзыв сертификата в текущей версии не оцениваются.
 
 ## Установка
 
-Готовые сборки лежат на странице [Releases](https://github.com/kstepanchuk/StampSign/releases). Приложение подписано ad-hoc и не нотаризовано, поэтому при первом запуске откройте его через правый клик → «Открыть».
+Сборки для Windows x64 и macOS (Apple Silicon / Intel) публикуются как GitHub Actions artifacts и в GitHub Releases:
 
-Сборка из исходников (нужны Xcode или Command Line Tools со Swift 5.9+, macOS 14+):
+- Windows: ZIP с self-contained приложением.
+- macOS: DMG с приложением и ссылкой `Applications`.
 
-```bash
-git clone https://github.com/kstepanchuk/StampSign.git
-cd StampSign
-./build.sh              # создаст StampSign.app рядом со скриптом
-VERSION=1.2.3 ./build.sh   # с нужной версией в Info.plist
+macOS сборка подписывается ad-hoc и не нотарифицируется.
+
+## Сборка
+
+Требуются .NET 10 и Go 1.26. PDF helper нужно собрать до публикации приложения:
+
+```sh
+cd Desktop/PdfBridge
+mkdir -p ../StampSign.Desktop/tools
+go build -o ../StampSign.Desktop/tools/stamp-pdf .
+cd ../..
+dotnet publish Desktop/StampSign.Desktop/StampSign.Desktop.csproj -c Release -r osx-arm64 --self-contained true
 ```
 
-## Как пользоваться
+Для Windows helper соберите с `GOOS=windows GOARCH=amd64` в `Desktop/StampSign.Desktop/tools/stamp-pdf.exe`, затем используйте `-r win-x64`. Для Intel Mac используйте `-r osx-x64`.
 
-1. Запустите StampSign и перетащите в окно PDF и `.sig` (или нажмите на карточки справа).
-2. Справа появится проверка подписи, на странице штамп.
-3. Поставьте штамп куда нужно.
-4. Нажмите «Сохранить PDF со штампом…».
+## Архитектура и лицензии
 
-## Что проверяется и чего нет
+- `Desktop/StampSign.Desktop` — общий Avalonia UI.
+- `Desktop/StampSign.Core` — CMS/CAdES и проверка подписей через Bouncy Castle.
+- `Desktop/StampSign.Pdf` и `Desktop/PdfBridge` — PDFium для просмотра и pdfcpu для штампа, вложений и PAdES ByteRange.
+- `Desktop/StampSign.Desktop/Signing` — локальная интеграция с CryptoPro Browser plug-in.
 
-| Проверка | Как |
-|---|---|
-| Документ не изменён | `messageDigest` из подписи сравнивается со Стрибогом от PDF |
-| Подпись верна | ЭЦП над подписанными атрибутами проверяется по ключу из сертификата |
-| Срок действия | время подписания внутри срока сертификата |
-| Подпись УЦ | если сертификат издателя есть в `.sig` (в том числе в штампе времени), проверяется подпись на сертификате |
-
-Не проверяются: доверие к корневому УЦ, отзыв сертификата (CRL/OCSP), штамп времени как таковой. Для юридически значимой проверки используйте сертифицированные средства (КриптоПро, ViPNet, Госуслуги).
-
-Поддерживаются хеши Стрибог-256/512 и кривые CryptoPro A/B/C, `tc26` 256-B/C/D и 512-A/B. Подписи с другими алгоритмами показываются как «проверить не удалось».
-
-## Устройство
-
-| Файл | Назначение |
-|---|---|
-| `SigParser.swift` | мини-парсер DER/BER, данные сертификата и время подписи |
-| `SigVerifier.swift` | проверка CMS: хеш, ЭЦП, срок, цепочка |
-| `Streebog.swift`, `StreebogTables.swift` | ГОСТ Р 34.11-2012 |
-| `GOST3410.swift`, `GOSTCurves.swift` | арифметика Монтгомери, кривые, проверка ЭЦП |
-| `StampRenderer.swift` | векторная отрисовка штампа |
-| `PDFExporter.swift`, `PDFAttachments.swift` | сборка PDF и вложения (инкрементальное обновление) |
-| `AppModel.swift`, `ContentView.swift` | SwiftUI-интерфейс |
-
-Таблицы Стрибога и параметры кривых сгенерированы из [gostcrypto](https://github.com/drobotun/gostcrypto) (MIT), см. [NOTICE.md](NOTICE.md).
-
-### Служебный режим командной строки
-
-Для тестов и отладки бинарник понимает несколько ключей:
-
-```bash
-StampSign --cli in.pdf in.sig out.pdf [x y width page|all]   # штамп и вложения без GUI
-StampSign --verify in.pdf in.sig                              # проверка подписи
-StampSign --verify-embedded stamped.pdf                       # проверка по вложениям
-StampSign --streebog 256 "строка"                             # хеш Стрибог
-```
-
-## Разработка
-
-```bash
-swift build
-swift test      # RFC 6986 (Стрибог), RFC 7091 (ЭЦП), экспорт и вложения
-```
-
-Подробнее в [CONTRIBUTING.md](CONTRIBUTING.md). Об уязвимостях сообщайте по [SECURITY.md](SECURITY.md).
-
-## Известные ограничения
-
-- Закладки, ссылки и формы исходного PDF не переносятся: страницы перерисовываются, а не редактируются.
-- Зашифрованные PDF поддерживаются только с пустым паролем.
-- Подпись проверяется только для одного подписанта (первого в `.sig`).
-
-## Лицензия
-
-[MIT](LICENSE). Сторонние материалы описаны в [NOTICE.md](NOTICE.md).
+Сторонние лицензии и изменения описаны в [NOTICE.md](NOTICE.md). Реализация `crypto-arm` не копировалась.

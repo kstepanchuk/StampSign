@@ -31,3 +31,15 @@ SOFTWARE.
 ## Стандарты
 
 Реализация следует ГОСТ Р 34.11-2012 (RFC 6986), ГОСТ Р 34.10-2012 (RFC 7091) и RFC 5652 (CMS). Тестовые векторы взяты из RFC 6986 и RFC 7091.
+# Cross-platform desktop application
+
+The in-progress Avalonia desktop app uses these third-party projects:
+
+- Avalonia UI — MIT License.
+- Bouncy Castle C# cryptography — MIT License.
+- PDFtoImage and SkiaSharp — MIT Licenses; PDFium components carry their upstream BSD-style license.
+- pdfcpu — Apache License 2.0. The PDF bridge is a small independent wrapper around its API; the license text is in `Desktop/PdfBridge/LICENSE.txt`.
+- pdfcpu-sign — Apache License 2.0. StampSign's external-CMS callback fork and its license are in `Desktop/PdfBridge/third_party/pdfcpu-sign`.
+- pdfcpu-sign — Apache License 2.0. StampSign's small fork adds a detached-CMS callback for CryptoPro; source and license are in `Desktop/PdfBridge/third_party/pdfcpu-sign`.
+
+See each upstream project's license for complete terms and required notices.

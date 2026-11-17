@@ -1,0 +1,108 @@
+name: Cross-platform desktop
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            goos: windows
+            goarch: amd64
+            suffix: .exe
+          - os: macos-15
+            rid: osx-arm64
+            goos: darwin
+            goarch: arm64
+            suffix: ""
+          - os: macos-15-intel
+            rid: osx-x64
+            goos: darwin
+            goarch: amd64
+            suffix: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+      - name: Build PDF bridge
+        working-directory: Desktop/PdfBridge
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          mkdir -p "../StampSign.Desktop/tools"
+          go build -trimpath -ldflags="-s -w" -o "../StampSign.Desktop/tools/stamp-pdf${{ matrix.suffix }}" .
+      - name: Publish desktop app
+        run: dotnet publish Desktop/StampSign.Desktop/StampSign.Desktop.csproj -c Release -r ${{ matrix.rid }} --self-contained true -o artifacts/${{ matrix.rid }}/publish
+      - name: Package Windows folder
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "artifacts/${{ matrix.rid }}/publish/*" -DestinationPath "artifacts/${{ matrix.rid }}/StampSign-${{ matrix.rid }}.zip"
+          Remove-Item -Recurse -Force "artifacts/${{ matrix.rid }}/publish"
+      - name: Package macOS application bundle
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          app="artifacts/${{ matrix.rid }}/StampSign.app"
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+          cp -R "artifacts/${{ matrix.rid }}/publish/." "$app/Contents/MacOS/"
+          cp Resources/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
+          cat > "$app/Contents/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>CFBundleExecutable</key><string>StampSign.Desktop</string>
+          <key>CFBundleIdentifier</key><string>io.github.kstepanchuk.StampSign</string>
+          <key>CFBundleName</key><string>StampSign</string>
+          <key>CFBundleDisplayName</key><string>StampSign</string>
+          <key>CFBundlePackageType</key><string>APPL</string>
+          <key>CFBundleIconFile</key><string>AppIcon</string>
+          <key>LSMinimumSystemVersion</key><string>14.0</string>
+          </dict></plist>
+          PLIST
+          chmod +x "$app/Contents/MacOS/StampSign.Desktop"
+          ./scripts/package-macos-dmg.sh "$app" "artifacts/${{ matrix.rid }}/StampSign-${{ matrix.rid }}.dmg"
+          rm -rf "$app"
+          rm -rf "artifacts/${{ matrix.rid }}/publish"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StampSign-${{ matrix.rid }}
+          path: artifacts/${{ matrix.rid }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: StampSign-*
+          path: release-assets
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            release-assets/StampSign-win-x64/StampSign-win-x64.zip \
+            release-assets/StampSign-osx-arm64/StampSign-osx-arm64.dmg \
+            release-assets/StampSign-osx-x64/StampSign-osx-x64.dmg \
+            --title "StampSign ${GITHUB_REF_NAME}" --generate-notes

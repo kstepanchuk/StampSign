@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>StampSign — подпись CryptoPro</title>
+  <style>
+    :root { color-scheme: light dark; font: 15px system-ui, sans-serif; }
+    body { margin: 0; background: #f4f5f7; color: #20242b; }
+    main { max-width: 620px; margin: 8vh auto; padding: 28px; background: white; border: 1px solid #dce0e7; border-radius: 12px; }
+    h1 { margin-top: 0; font-size: 22px; }
+    label { display: block; margin: 18px 0 6px; font-weight: 600; }
+    select, button { width: 100%; padding: 11px; font: inherit; border: 1px solid #c8ced8; border-radius: 8px; background: white; color: inherit; }
+    button { margin-top: 22px; border: 0; background: #4c40d2; color: white; font-weight: 650; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #status { min-height: 3em; margin-top: 18px; color: #515a68; white-space: pre-wrap; }
+    .small { color: #677180; font-size: 13px; line-height: 1.45; }
+    @media (prefers-color-scheme: dark) { body { background:#17191d;color:#e8eaf0 } main { background:#22252a;border-color:#373b44 } select { background:#292d33 } }
+  </style>
+  <script src="https://cryptopro.ru/sites/default/files/products/cades/cadesplugin_api.js"></script>
+</head>
+<body>
+<main>
+  <h1>Создание CMS/CAdES подписи</h1>
+  <div class="small">StampSign передал документ только локально. Закрытый ключ остаётся в CryptoPro или на подключённом носителе. В окне браузера подтвердите доступ расширения CryptoPro.</div>
+  <label for="certificate">Сертификат</label>
+  <select id="certificate" disabled><option>Проверяю CryptoPro…</option></select>
+  <div id="certificateInfo" class="small"></div>
+  <button id="sign" disabled>Подписать</button>
+  <div id="status" role="status">Ожидание CryptoPro Browser plug-in…</div>
+</main>
+<script>
+(() => {
+  const noncePath = location.pathname.replace(/\/$/, "");
+  const select = document.getElementById("certificate");
+  const button = document.getElementById("sign");
+  const status = document.getElementById("status");
+  const certificateInfo = document.getElementById("certificateInfo");
+  let bytes;
+  const mode = new URLSearchParams(location.search).get("mode") || "detached";
+  if (mode === "pades") document.getElementById("pageTitle").textContent = "Подписание PDF (PAdES)";
+  let pluginReady = false;
+  let sourceReady = false;
+  let loadingCertificates = false;
+
+  const setStatus = (text) => { status.textContent = text; };
+  const api = (path) => `${noncePath}/${path}`;
+
+  function bytesToBase64(arrayBuffer) {
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk)
+      binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+    return btoa(binary);
+  }
+
+  async function loadCertificates() {
+    const store = await cadesplugin.CreateObjectAsync("CAdESCOM.Store");
+    await store.Open(cadesplugin.CAPICOM_CURRENT_USER_STORE, cadesplugin.CAPICOM_MY_STORE,
+      cadesplugin.CAPICOM_STORE_OPEN_MAXIMUM_ALLOWED);
+    const certificates = await store.Certificates;
+    const count = await certificates.Count;
+    select.replaceChildren();
+    for (let i = 1; i <= count; i++) {
+      const cert = await certificates.Item(i);
+      const thumbprint = await cert.Thumbprint;
+      const subject = await cert.SubjectName;
+      const validTo = await cert.ValidToDate;
+      const serial = await cert.SerialNumber;
+      const validFrom = await cert.ValidFromDate;
+      const option = document.createElement("option");
+      option.value = thumbprint;
+      option.textContent = `${subject} · до ${new Date(validTo).toLocaleDateString("ru-RU")}`;
+      option.dataset.subject = subject;
+      option.dataset.serial = String(serial).replace(/\s/g, "").toUpperCase();
+      option.dataset.validFrom = new Date(validFrom).toISOString();
+      option.dataset.validTo = new Date(validTo).toISOString();
+      select.append(option);
+    }
+    await store.Close();
+    if (count === 0) throw new Error("В хранилище CryptoPro нет сертификатов.");
+    select.disabled = false;
+    button.disabled = false;
+    certificateInfo.textContent = `${count} сертификат(ов) в личном хранилище пользователя.`;
+    setStatus(mode === "pades"
+      ? "Выберите сертификат и нажмите «Подписать PDF». StampSign добавит PAdES подпись и видимый штамп."
+      : "Документ готов к подписи. Выберите сертификат и нажмите «Подписать».");
+  }
+
+  async function notifyPadesCertificate() {
+    const option = select.selectedOptions[0];
+    if (!option) return;
+    const response = await fetch(api("pades/certificate"), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        thumbprint: option.value,
+        subject: option.dataset.subject,
+        serialHex: option.dataset.serial,
+        notBefore: option.dataset.validFrom,
+        notAfter: option.dataset.validTo
+      })
+    });
+    if (!response.ok) throw new Error("StampSign не смог получить сертификат для PAdES подписи.");
+  }
+
+  async function waitForPadesData() {
+    while (true) {
+      const response = await fetch(api("pades/pending"), { cache: "no-store" });
+      if (response.status === 200) {
+        const request = await response.json();
+        const dataResponse = await fetch(api(`pades/pending/${request.id}/data`), { cache: "no-store" });
+        if (!dataResponse.ok) throw new Error("Не удалось получить диапазон PDF для подписи.");
+        return { id: request.id, data: await dataResponse.arrayBuffer() };
+      }
+      if (response.status !== 204) throw new Error("StampSign не ответил на запрос подписи.");
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+
+  async function initializeWhenReady() {
+    if (!pluginReady || !sourceReady || loadingCertificates) return;
+    loadingCertificates = true;
+    try { await loadCertificates(); }
+    catch (error) { setStatus(cadesplugin.getLastError ? cadesplugin.getLastError(error) : String(error)); }
+  }
+
+  async function sign() {
+    button.disabled = true;
+    select.disabled = true;
+    setStatus("CryptoPro выполняет подпись. Подтвердите запрос плагина, если он появится…");
+    const store = await cadesplugin.CreateObjectAsync("CAdESCOM.Store");
+    await store.Open(cadesplugin.CAPICOM_CURRENT_USER_STORE, cadesplugin.CAPICOM_MY_STORE,
+      cadesplugin.CAPICOM_STORE_OPEN_MAXIMUM_ALLOWED);
+    try {
+      const all = await store.Certificates;
+      const matches = await all.Find(cadesplugin.CAPICOM_CERTIFICATE_FIND_SHA1_HASH, select.value);
+      if ((await matches.Count) === 0) throw new Error("Выбранный сертификат исчез из хранилища.");
+      const certificate = await matches.Item(1);
+      const signer = await cadesplugin.CreateObjectAsync("CAdESCOM.CPSigner");
+      await signer.propset_Certificate(certificate);
+      await signer.propset_CheckCertificate(true);
+
+      let signData = bytes;
+      let pendingId = null;
+      if (mode === "pades") {
+        await notifyPadesCertificate();
+        setStatus("Ожидание данных PDF. Когда StampSign подготовит подпись, подтвердите запрос CryptoPro…");
+        const pending = await waitForPadesData();
+        signData = pending.data;
+        pendingId = pending.id;
+      }
+      const data = await cadesplugin.CreateObjectAsync("CAdESCOM.CadesSignedData");
+      await data.propset_ContentEncoding(cadesplugin.CADESCOM_BASE64_TO_BINARY);
+      await data.propset_Content(bytesToBase64(signData));
+      const detached = mode !== "attached";
+      const cms = await data.SignCades(signer, cadesplugin.CADESCOM_CADES_BES, detached);
+      const completePath = mode === "pades" ? `pades/complete/${pendingId}` : "complete";
+      const response = await fetch(api(completePath), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signatureBase64: cms.replace(/\s/g, "") })
+      });
+      if (!response.ok) throw new Error("StampSign не смог принять результат подписи.");
+      setStatus(mode === "pades" ? "PAdES подпись сформирована. Вернитесь в StampSign." : "Подпись создана. Вернитесь в StampSign.");
+      document.querySelector("main").insertAdjacentHTML("beforeend", "<p class='small'>Можно закрыть эту вкладку.</p>");
+    } finally {
+      await store.Close();
+    }
+  }
+
+  (mode === "pades" ? Promise.resolve(null) : fetch(api("source")).then(response => {
+    if (!response.ok) throw new Error("StampSign не передал исходный файл.");
+    return response.arrayBuffer();
+  })).then(data => { if (data) bytes = data; sourceReady = true; setStatus(mode === "pades" ? "Локальная сессия готова. Ожидание CryptoPro…" : "Документ получен. Ожидание CryptoPro…"); return initializeWhenReady(); })
+    .catch(error => setStatus(error.message));
+  button.addEventListener("click", () => sign().catch(error => {
+    button.disabled = false; select.disabled = false;
+    setStatus(cadesplugin.getLastError ? cadesplugin.getLastError(error) : String(error));
+  }));
+  if (window.cadesplugin && typeof cadesplugin.then === "function") {
+    cadesplugin.then(() => { pluginReady = true; return initializeWhenReady(); },
+      error => setStatus(`CryptoPro Browser plug-in недоступен: ${error}`));
+  } else {
+    setStatus("Скрипт CryptoPro не загрузился. Проверьте доступ к cryptopro.ru и установку расширения.");
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Desktop/StampSign.Desktop/StampSign.Desktop.csproj" />
+  <Project Path="Desktop/StampSign.Core/StampSign.Core.csproj" />
+  <Project Path="Desktop/StampSign.Pdf/StampSign.Pdf.csproj" />
+</Solution>
