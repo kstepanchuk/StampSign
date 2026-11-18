@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Input;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using StampSign.Core;
@@ -22,7 +23,59 @@ public sealed partial class MainWindow : Window
     private readonly CadesSigningHost signingHost = new();
     private readonly PadesSigningHost padesHost = new();
 
-    public MainWindow() => InitializeComponent();
+    public MainWindow()
+    {
+        InitializeComponent();
+        DragDrop.SetAllowDrop(this, true);
+        DragDrop.AddDragOverHandler(this, OnDragOver);
+        DragDrop.AddDropHandler(this, OnDrop);
+    }
+
+    public async Task OpenFiles(IEnumerable<string> paths)
+    {
+        var files = paths.Where(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path)).ToArray();
+        var droppedPdf = files.FirstOrDefault(path => Path.GetExtension(path).Equals(".pdf", StringComparison.OrdinalIgnoreCase));
+        var droppedSignature = files.FirstOrDefault(path => IsSignatureFile(path));
+        if (droppedPdf is null && droppedSignature is null) return;
+
+        try
+        {
+            if (droppedPdf is not null)
+            {
+                pdfPath = droppedPdf;
+                signaturePath = null;
+                signatureInfo = null;
+                pdfInfo = pdf.Open(pdfPath);
+                pageIndex = 0;
+                SetSigningAvailable(true);
+                RenderCurrentPage();
+            }
+            if (droppedSignature is not null) signaturePath = droppedSignature;
+            UpdateSummary();
+            await RefreshVerification();
+        }
+        catch (Exception ex)
+        {
+            VerificationDetails.Text = $"Не удалось открыть файл: {ex.Message}";
+        }
+    }
+
+    private static bool IsSignatureFile(string path) => Path.GetExtension(path).ToLowerInvariant() is
+        ".sig" or ".p7s" or ".p7m" or ".cms";
+
+    private static void OnDragOver(object? sender, DragEventArgs e) =>
+        e.DragEffects = e.DataTransfer.Formats.Contains(DataFormat.File)
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+
+    private void OnDrop(object? sender, DragEventArgs e)
+    {
+        var files = e.DataTransfer.TryGetFiles();
+        if (files is null) return;
+        var paths = files.Select(file => file.Path.LocalPath).ToArray();
+        _ = OpenFiles(paths);
+        e.DragEffects = DragDropEffects.Copy;
+    }
 
     private async void OpenPdf(object? sender, RoutedEventArgs e)
     {
@@ -33,16 +86,8 @@ public sealed partial class MainWindow : Window
             FileTypeFilter = [new FilePickerFileType("PDF") { Patterns = ["*.pdf"] }]
         });
         if (file.Count == 0) return;
-        pdfPath = file[0].TryGetLocalPath();
-        if (pdfPath is null) return;
-        signaturePath = null;
-        signatureInfo = null;
-        pdfInfo = pdf.Open(pdfPath);
-        pageIndex = 0;
-        SetSigningAvailable(true);
-        RenderCurrentPage();
-        UpdateSummary();
-        await RefreshVerification();
+        var path = file[0].TryGetLocalPath();
+        if (path is not null) await OpenFiles([path]);
     }
 
     private async void OpenSignature(object? sender, RoutedEventArgs e)
@@ -54,10 +99,8 @@ public sealed partial class MainWindow : Window
             FileTypeFilter = [new FilePickerFileType("CMS / CAdES") { Patterns = ["*.sig", "*.p7s", "*.p7m", "*.cms"] }]
         });
         if (file.Count == 0) return;
-        signaturePath = file[0].TryGetLocalPath();
-        if (signaturePath is null) return;
-        UpdateSummary();
-        await RefreshVerification();
+        var path = file[0].TryGetLocalPath();
+        if (path is not null) await OpenFiles([path]);
     }
 
     private void UpdateSummary() => FileSummary.Text = string.Join("   ·   ",
@@ -104,6 +147,14 @@ public sealed partial class MainWindow : Window
         try
         {
             var input = CmsSignatureReader.Read(signaturePath, pdfPath);
+            if (input.Mode == SignatureMode.Detached && pdfPath is null)
+            {
+                signatureInfo = null;
+                SignatureDetails.Text = "Откреплённая подпись (.sig)";
+                VerificationDetails.Text = "Для проверки откреплённой подписи откройте исходный PDF или перетащите оба файла в окно.";
+                SaveButton.IsEnabled = false;
+                return;
+            }
             if (pdfPath is null && input.EmbeddedContent is { Length: > 5 } embedded &&
                 embedded.AsSpan(0, 5).SequenceEqual("%PDF-"u8))
             {

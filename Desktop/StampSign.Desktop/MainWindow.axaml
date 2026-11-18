@@ -14,7 +14,7 @@
     <Border Grid.Row="1" Grid.Column="0" Margin="16" Background="#E8EBF0" CornerRadius="8">
       <Grid>
         <Image x:Name="PagePreview" Stretch="Uniform" Margin="22" />
-        <TextBlock x:Name="EmptyState" Text="Перетащите сюда PDF и .sig" HorizontalAlignment="Center"
+        <TextBlock x:Name="EmptyState" Text="Перетащите сюда PDF и .sig или откройте файл через приложение" HorizontalAlignment="Center"
                    VerticalAlignment="Center" Foreground="#596273" FontSize="19" />
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="12" Spacing="10">
           <Button Content="‹" Click="PreviousPage" />
