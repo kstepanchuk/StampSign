@@ -101,9 +101,13 @@ func extractPadesSignature(ctx context.Context, args []string) error {
 	if err != nil { return errNoPadesSignature }
 	var cmsBytes, signedBytes []byte
 	for _, field := range fields {
-		cmsBytes, signedBytes, err = findPadesSignature(pdfCtx, pdfBytes, field, "", 0)
-		if err != nil { return err }
-		if cmsBytes != nil { break }
+		candidateCMS, candidateBytes, candidateErr := findPadesSignature(pdfCtx, pdfBytes, field, "", 0)
+		if candidateErr != nil {
+			return candidateErr
+		}
+		if candidateCMS != nil {
+			cmsBytes, signedBytes = candidateCMS, candidateBytes
+		}
 	}
 	if cmsBytes == nil { return errNoPadesSignature }
 	if err := os.WriteFile(args[1], cmsBytes, 0600); err != nil { return err }
@@ -118,9 +122,15 @@ func findPadesSignature(ctx *model.Context, pdfBytes []byte, field types.Object,
 	if name := dict.NameEntry("FT"); name != nil { fieldType = *name }
 	if fieldType == "Sig" {
 		if value, ok := dict.Find("V"); ok {
-			if sigDict, err := ctx.DereferenceDict(value); err == nil {
-				if cms, signed, err := signatureContentsAndByteRange(pdfBytes, ctx, sigDict); err == nil { return cms, signed, nil }
+			sigDict, err := ctx.DereferenceDict(value)
+			if err != nil {
+				return nil, nil, fmt.Errorf("cannot read PAdES signature dictionary: %w", err)
 			}
+			cms, signed, err := signatureContentsAndByteRange(pdfBytes, ctx, sigDict)
+			if err != nil {
+				return nil, nil, fmt.Errorf("invalid PAdES signature field: %w", err)
+			}
+			return cms, signed, nil
 		}
 	}
 	if kids, ok := dict.Find("Kids"); ok {
