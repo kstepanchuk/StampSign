@@ -89,8 +89,13 @@ func extractPadesSignature(ctx context.Context, args []string) error {
 	if err != nil { return err }
 	pdfCtx, err := pdfcpu.Read(ctx, bytes.NewReader(pdfBytes), nil)
 	if err != nil { return err }
-	if pdfCtx.Form == nil { return errNoPadesSignature }
-	fieldsObject, ok := pdfCtx.Form.Find("Fields")
+	catalog, err := pdfCtx.Catalog()
+	if err != nil { return err }
+	acroFormObject, ok := catalog.Find("AcroForm")
+	if !ok { return errNoPadesSignature }
+	acroForm, err := pdfCtx.DereferenceDict(acroFormObject)
+	if err != nil { return errNoPadesSignature }
+	fieldsObject, ok := acroForm.Find("Fields")
 	if !ok { return errNoPadesSignature }
 	fields, err := pdfCtx.DereferenceArray(fieldsObject)
 	if err != nil { return errNoPadesSignature }
