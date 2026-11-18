@@ -14,7 +14,7 @@ public sealed class App : Application
         {
             var window = new MainWindow();
             desktop.MainWindow = window;
-            window.Opened += async (_, _) => await window.OpenFiles(desktop.Args);
+            window.Opened += async (_, _) => await window.OpenFiles(desktop.Args ?? []);
         }
         base.OnFrameworkInitializationCompleted();
     }
