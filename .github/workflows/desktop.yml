@@ -41,7 +41,6 @@ jobs:
         with:
           go-version: '1.26.x'
           cache-dependency-path: Desktop/PdfBridge/go.sum
-          cache-dependency-path: Desktop/PdfBridge/go.sum
       - name: Build PDF bridge
         working-directory: Desktop/PdfBridge
         shell: bash
