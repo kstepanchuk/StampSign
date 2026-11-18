@@ -35,6 +35,8 @@ public sealed partial class MainWindow : Window
         if (file.Count == 0) return;
         pdfPath = file[0].TryGetLocalPath();
         if (pdfPath is null) return;
+        signaturePath = null;
+        signatureInfo = null;
         pdfInfo = pdf.Open(pdfPath);
         pageIndex = 0;
         SetSigningAvailable(true);
@@ -64,7 +66,41 @@ public sealed partial class MainWindow : Window
 
     private async Task RefreshVerification()
     {
-        if (signaturePath is null) return;
+        if (signaturePath is null)
+        {
+            if (pdfPath is null) return;
+            try
+            {
+                var embeddedPades = await pdf.ExtractPadesSignatureAsync(pdfPath);
+                if (embeddedPades is null)
+                {
+                    SignatureDetails.Text = "В PDF нет встроенной PAdES подписи.";
+                    VerificationDetails.Text = string.Empty;
+                    SaveButton.IsEnabled = false;
+                    return;
+                }
+                var cert = CmsSignatureReader.GetSignerCertificate(embeddedPades);
+                var commonName = cert.SubjectDN.GetValueList(X509Name.CN).FirstOrDefault()?.ToString();
+                signatureInfo = new SignatureInfo(Convert.ToHexString(cert.SerialNumber.ToByteArrayUnsigned()),
+                    commonName ?? cert.SubjectDN.ToString(),
+                    new DateTimeOffset(DateTime.SpecifyKind(cert.NotBefore, DateTimeKind.Utc)),
+                    new DateTimeOffset(DateTime.SpecifyKind(cert.NotAfter, DateTimeKind.Utc)), null,
+                    SignatureMode.Detached);
+                var verification = CmsVerificationService.Verify(embeddedPades);
+                SignatureDetails.Text = $"Встроенная PAdES подпись\n{signatureInfo.Owner}\nСертификат: {signatureInfo.SerialHex}\n" +
+                    $"Действует: {signatureInfo.NotBefore:dd.MM.yyyy} — {signatureInfo.NotAfter:dd.MM.yyyy}";
+                VerificationDetails.Text = $"Целостность: {verification.Integrity}\nЭЦП: {verification.Signature}\n" +
+                    $"Цепочка: {verification.Chain}\n" + string.Join("\n", verification.Notes);
+                SaveButton.IsEnabled = false;
+            }
+            catch (Exception ex)
+            {
+                SignatureDetails.Text = "Не удалось прочитать встроенную PAdES подпись.";
+                VerificationDetails.Text = ex.Message;
+                SaveButton.IsEnabled = false;
+            }
+            return;
+        }
         try
         {
             var input = CmsSignatureReader.Read(signaturePath, pdfPath);
@@ -193,13 +229,12 @@ public sealed partial class MainWindow : Window
             signatureInfo = await padesHost.SignAsync(pdf, pdfPath, destination, x, y, width,
                 AllPages.IsChecked == true ? null : pageIndex + 1);
             pdfPath = destination;
+            signaturePath = null;
             pdfInfo = pdf.Open(destination);
             pageIndex = 0;
             RenderCurrentPage();
             UpdateSummary();
-            SignatureDetails.Text = $"PAdES · {signatureInfo.Owner}\nСертификат: {signatureInfo.SerialHex}\n" +
-                $"Действует: {signatureInfo.NotBefore:dd.MM.yyyy} — {signatureInfo.NotAfter:dd.MM.yyyy}";
-            VerificationDetails.Text = "PAdES подпись встроена в PDF. Проверьте её статус в совместимом просмотрщике PDF.";
+            await RefreshVerification();
         }
         catch (Exception ex)
         {

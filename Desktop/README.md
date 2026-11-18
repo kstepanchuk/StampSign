@@ -10,6 +10,7 @@ The `StampSign.Desktop.slnx` solution is the shared .NET/Avalonia StampSign appl
 - `PdfBridge`: small Go helper using pdfcpu for vector-preserving page stamps and file attachments.
 - `Signing/cades-sign.html`: local CryptoPro Browser plug-in page for creating detached or attached CMS `.sig` files. It receives the PDF over loopback and never sends the document to a remote service.
 - PAdES signing reserves the PDF `/ByteRange` with pdfcpu-sign and requests the detached CMS from CryptoPro in the local browser page.
+- PAdES extraction returns the CMS container and concatenated signed byte ranges to the shared CMS verifier when a signed PDF is opened.
 
 PDF editing intentionally uses pdfcpu (Apache-2.0); PDFsharp was excluded because its current licensing would conflict with StampSign's MIT distribution. The crypto-arm implementation is not copied.
 

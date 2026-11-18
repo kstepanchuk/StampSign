@@ -42,4 +42,8 @@ public sealed class PdfDocumentService
         int? pageIndex, string callbackUrl, string signerName, CancellationToken cancellationToken = default) =>
         PdfCpuBridge.SignPadesAsync(input, output, pngStamp, x, y, width, pageIndex, callbackUrl, signerName,
             cancellationToken);
+
+    public Task<StampSign.Core.SignatureInput?> ExtractPadesSignatureAsync(string path,
+        CancellationToken cancellationToken = default) =>
+        PdfCpuBridge.ExtractPadesSignatureAsync(path, cancellationToken);
 }

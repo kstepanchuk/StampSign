@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using StampSign.Core;
 
 namespace StampSign.Pdf;
 
@@ -25,7 +26,34 @@ internal static class PdfCpuBridge
             pageIndex?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "all",
             callbackUrl, signerName], cancellationToken);
 
+    public static async Task<SignatureInput?> ExtractPadesSignatureAsync(string pdfPath,
+        CancellationToken cancellationToken)
+    {
+        var cmsPath = Path.Combine(Path.GetTempPath(), $"StampSign-{Guid.NewGuid():N}.cms");
+        var contentPath = Path.Combine(Path.GetTempPath(), $"StampSign-{Guid.NewGuid():N}.bytes");
+        try
+        {
+            var exitCode = await RunProcessAsync(["extract-pades", pdfPath, cmsPath, contentPath], cancellationToken);
+            if (exitCode == 2) return null;
+            if (exitCode != 0) throw new InvalidDataException("Не удалось прочитать PAdES подпись из PDF.");
+            return new SignatureInput(await File.ReadAllBytesAsync(cmsPath, cancellationToken),
+                await File.ReadAllBytesAsync(contentPath, cancellationToken), SignatureMode.Detached, null);
+        }
+        finally
+        {
+            if (File.Exists(cmsPath)) File.Delete(cmsPath);
+            if (File.Exists(contentPath)) File.Delete(contentPath);
+        }
+    }
+
     private static async Task RunAsync(string[] arguments, CancellationToken cancellationToken)
+    {
+        var exitCode = await RunProcessAsync(arguments, cancellationToken);
+        if (exitCode != 0)
+            throw new InvalidOperationException("PDF-операция завершилась ошибкой.");
+    }
+
+    private static async Task<int> RunProcessAsync(string[] arguments, CancellationToken cancellationToken)
     {
         var executable = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "stamp-pdf.exe" : "stamp-pdf";
         var path = Path.Combine(AppContext.BaseDirectory, "tools", executable);
@@ -47,7 +75,9 @@ internal static class PdfCpuBridge
             await errorTask;
             throw;
         }
-        if (process.ExitCode != 0)
-            throw new InvalidOperationException($"PDF-операция завершилась ошибкой: {await errorTask}");
+        var error = await errorTask;
+        if (process.ExitCode != 0 && process.ExitCode != 2)
+            throw new InvalidOperationException($"PDF-операция завершилась ошибкой: {error}");
+        return process.ExitCode;
     }
 }
