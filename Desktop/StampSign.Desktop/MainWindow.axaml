@@ -37,6 +37,14 @@
       <StackPanel Spacing="12">
         <TextBlock Text="Подпись" FontSize="18" FontWeight="SemiBold" />
         <TextBlock x:Name="SignatureDetails" Text="Откройте файл подписи, чтобы посмотреть сертификат и проверить документ." TextWrapping="Wrap" />
+        <ComboBox x:Name="StampTimeZone" SelectedIndex="1" SelectionChanged="StampTimeZoneChanged">
+          <ComboBoxItem Content="Калининград (UTC+2)" Tag="Europe/Kaliningrad" />
+          <ComboBoxItem Content="Москва (UTC+3)" Tag="Europe/Moscow" />
+          <ComboBoxItem Content="Самара (UTC+4)" Tag="Europe/Samara" />
+          <ComboBoxItem Content="Екатеринбург (UTC+5)" Tag="Asia/Yekaterinburg" />
+          <ComboBoxItem Content="Новосибирск (UTC+7)" Tag="Asia/Novosibirsk" />
+          <ComboBoxItem Content="Владивосток (UTC+10)" Tag="Asia/Vladivostok" />
+        </ComboBox>
         <TextBlock x:Name="VerificationDetails" TextWrapping="Wrap" Foreground="#596273" />
         <Separator />
         <TextBlock Text="Создать CMS/CAdES подпись" FontSize="16" FontWeight="SemiBold" />
@@ -66,7 +74,7 @@
         <Button x:Name="PlaceStampOnPageButton" Content="Поставить штамп на эту страницу" Click="PlaceStampOnCurrentPage" IsVisible="False" />
         <TextBlock Text="Тяните штамп для перемещения, ручку — для изменения ширины. Стрелки двигают на 1 pt; Alt отключает прилипание."
                    TextWrapping="Wrap" Foreground="#596273" FontSize="12" />
-        <CheckBox x:Name="EmbedEvidence" Content="Вложить исходный PDF и .sig для последующей проверки" IsChecked="True" />
+        <CheckBox x:Name="EmbedEvidence" Content="Вложить исходный PDF и .sig для последующей проверки" IsChecked="True" Click="EmbedEvidenceChanged" />
         <Button x:Name="SaveButton" Content="Сохранить PDF со штампом…" Click="SaveStampedPdf" IsEnabled="False" />
         <Button x:Name="PadesButton" Content="Подписать PDF в PAdES…" Click="SignPadesPdf" IsEnabled="False" />
       </StackPanel>

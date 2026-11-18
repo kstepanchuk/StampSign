@@ -6,6 +6,7 @@ using Avalonia.Platform.Storage;
 using StampSign.Core;
 using StampSign.Pdf;
 using System.Globalization;
+using System.Text.Json;
 using Org.BouncyCastle.Asn1.X509;
 using StampSign.Desktop.Signing;
 
@@ -28,6 +29,8 @@ public sealed partial class MainWindow : Window
     private double stampY = 20;
     private double stampWidth = 190;
     private bool syncingPlacementFields;
+    private bool initializing = true;
+    private UserPreferences preferences = new();
     private readonly PdfDocumentService pdf = new();
     private readonly CadesSigningHost signingHost = new();
     private readonly PadesSigningHost padesHost = new();
@@ -35,10 +38,18 @@ public sealed partial class MainWindow : Window
     private enum StampDragMode { Move, Resize }
     private readonly record struct StampPlacement(double X, double Y, double Width);
     private readonly record struct PageGeometry(double Scale, double Left, double Top, double PageWidth, double PageHeight);
+    private sealed record UserPreferences(double? Fx = null, double? Fy = null, double? Fw = null,
+        string TimeZoneId = "Europe/Moscow", bool EmbedEvidence = true);
 
     public MainWindow()
     {
         InitializeComponent();
+        preferences = LoadPreferences();
+        var zoneId = preferences.TimeZoneId;
+        StampTimeZone.SelectedItem = StampTimeZone.Items.Cast<ComboBoxItem>()
+            .FirstOrDefault(item => item.Tag?.ToString() == zoneId) ?? StampTimeZone.Items[1];
+        EmbedEvidence.IsChecked = preferences.EmbedEvidence;
+        initializing = false;
         DragDrop.SetAllowDrop(this, true);
         DragDrop.AddDragOverHandler(this, OnDragOver);
         DragDrop.AddDropHandler(this, OnDrop);
@@ -63,7 +74,7 @@ public sealed partial class MainWindow : Window
                 stampPageIndex = pageIndex;
                 SetSigningAvailable(true);
                 RenderCurrentPage();
-                SetPlacement(20, 20, 190);
+                ApplySavedPlacement();
             }
             if (droppedSignature is not null) signaturePath = droppedSignature;
             UpdateSummary();
@@ -146,7 +157,7 @@ public sealed partial class MainWindow : Window
                 SetSignatureInfo(currentSignature);
                 var verification = CmsVerificationService.Verify(embeddedPades);
                 SignatureDetails.Text = $"Встроенная PAdES подпись\n{currentSignature.Owner}\nСертификат: {currentSignature.SerialHex}\n" +
-                    $"Действует: {currentSignature.NotBefore.ToLocalTime():dd.MM.yyyy} — {currentSignature.NotAfter.ToLocalTime():dd.MM.yyyy}\n" +
+                    $"Действует: {FormatInSelectedZone(currentSignature.NotBefore, "dd.MM.yyyy")} — {FormatInSelectedZone(currentSignature.NotAfter, "dd.MM.yyyy")}\n" +
                     SigningTimeLine(signingTime);
                 VerificationDetails.Text = $"Целостность: {verification.Integrity}\nЭЦП: {verification.Signature}\n" +
                     $"Сертификат в указанное время: {verification.CertificateTime}\nЦепочка: {verification.Chain}\n" +
@@ -189,7 +200,7 @@ public sealed partial class MainWindow : Window
                 stampPageIndex = pageIndex;
                 SetSigningAvailable(true);
                 RenderCurrentPage();
-                SetPlacement(20, 20, 190);
+                ApplySavedPlacement();
                 UpdateSummary();
                 input = CmsSignatureReader.Read(signaturePath, pdfPath);
             }
@@ -203,7 +214,7 @@ public sealed partial class MainWindow : Window
             SignatureDetails.Text = $"Режим: {(input.Mode == SignatureMode.Attached ? "прикреплённая" : "откреплённая")}\n" +
                 $"Сертификат: {signatureInfo!.SerialHex}\n" +
                 $"Владелец: {signatureInfo.Owner}\n" +
-                $"Действует: {signatureInfo.NotBefore.ToLocalTime():dd.MM.yyyy} — {signatureInfo.NotAfter.ToLocalTime():dd.MM.yyyy}\n" +
+                $"Действует: {FormatInSelectedZone(signatureInfo.NotBefore, "dd.MM.yyyy")} — {FormatInSelectedZone(signatureInfo.NotAfter, "dd.MM.yyyy")}\n" +
                 SigningTimeLine(signingTime);
             VerificationDetails.Text = $"Целостность: {verification.Integrity}\n" +
                 $"Сертификат в указанное время: {verification.CertificateTime}\n" +
@@ -267,7 +278,7 @@ public sealed partial class MainWindow : Window
             var y = stampY;
             var width = stampWidth;
             var imagePath = Path.Combine(Path.GetTempPath(), $"StampSign-{Guid.NewGuid():N}.png");
-            await File.WriteAllBytesAsync(imagePath, SignatureStampRenderer.Render(signatureInfo));
+            await File.WriteAllBytesAsync(imagePath, SignatureStampRenderer.Render(signatureInfo, SelectedTimeZone()));
             var stamped = destination + ".stamped.tmp.pdf";
             try
             {
@@ -382,7 +393,7 @@ public sealed partial class MainWindow : Window
         stampBitmap = null;
         if (value is not null)
         {
-            using var stream = new MemoryStream(SignatureStampRenderer.Render(value));
+            using var stream = new MemoryStream(SignatureStampRenderer.Render(value, SelectedTimeZone()));
             stampBitmap = new Bitmap(stream);
         }
         RenderStampPreview();
@@ -454,13 +465,14 @@ public sealed partial class MainWindow : Window
         if (TryParsePlacementField(StampWidth.Text, out var width)) stampWidth = width;
         ClampPlacement();
         stampPageIndex = pageIndex;
+        PersistPlacement();
         RenderStampPreview();
     }
 
     private static bool TryParsePlacementField(string? text, out double value) =>
         double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value) && double.IsFinite(value);
 
-    private void SetPlacement(double x, double y, double width)
+    private void SetPlacement(double x, double y, double width, bool persist = true)
     {
         stampX = x;
         stampY = y;
@@ -470,7 +482,88 @@ public sealed partial class MainWindow : Window
         syncingPlacementFields = true;
         SyncPlacementFields();
         syncingPlacementFields = false;
+        if (persist) PersistPlacement();
         RenderStampPreview();
+    }
+
+    private void ApplySavedPlacement()
+    {
+        if (!TryGetPageGeometry(out var geometry)) return;
+        var width = preferences.Fw is > 0 and <= 1
+            ? preferences.Fw.Value * geometry.PageWidth
+            : Math.Min(190, geometry.PageWidth);
+        var x = preferences.Fx is >= 0 and <= 1
+            ? preferences.Fx.Value * geometry.PageWidth
+            : (geometry.PageWidth - width) / 2;
+        var y = preferences.Fy is >= 0 and <= 1
+            ? preferences.Fy.Value * geometry.PageHeight
+            : 20;
+        SetPlacement(x, y, width, persist: false);
+        if (preferences.Fx is null || preferences.Fy is null || preferences.Fw is null) PersistPlacement();
+    }
+
+    private void PersistPlacement()
+    {
+        if (!TryGetPageGeometry(out var geometry)) return;
+        preferences = preferences with
+        {
+            Fx = stampX / geometry.PageWidth,
+            Fy = stampY / geometry.PageHeight,
+            Fw = stampWidth / geometry.PageWidth
+        };
+        SavePreferences();
+    }
+
+    private static string PreferencesPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StampSign", "preferences.json");
+
+    private static UserPreferences LoadPreferences()
+    {
+        try
+        {
+            var path = PreferencesPath;
+            return File.Exists(path)
+                ? JsonSerializer.Deserialize<UserPreferences>(File.ReadAllText(path)) ?? new UserPreferences()
+                : new UserPreferences();
+        }
+        catch { return new UserPreferences(); }
+    }
+
+    private void SavePreferences()
+    {
+        try
+        {
+            var path = PreferencesPath;
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, JsonSerializer.Serialize(preferences));
+        }
+        catch { }
+    }
+
+    private TimeZoneInfo SelectedTimeZone()
+    {
+        var id = (StampTimeZone.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Europe/Moscow";
+        try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
+        catch { return TimeZoneInfo.Local; }
+    }
+
+    private string FormatInSelectedZone(DateTimeOffset value, string format) =>
+        TimeZoneInfo.ConvertTime(value, SelectedTimeZone()).ToString(format, CultureInfo.CurrentCulture);
+
+    private void StampTimeZoneChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (initializing) return;
+        var id = (StampTimeZone.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Europe/Moscow";
+        preferences = preferences with { TimeZoneId = id };
+        SavePreferences();
+        if (signatureInfo is not null) SetSignatureInfo(signatureInfo);
+    }
+
+    private void EmbedEvidenceChanged(object? sender, RoutedEventArgs e)
+    {
+        if (initializing) return;
+        preferences = preferences with { EmbedEvidence = EmbedEvidence.IsChecked == true };
+        SavePreferences();
     }
 
     private void SyncPlacementFields()
@@ -532,7 +625,7 @@ public sealed partial class MainWindow : Window
             y += oldHeight - newHeight;
         }
         (x, y, width) = SnapPlacement(x, y, width, geometry, e.KeyModifiers.HasFlag(KeyModifiers.Alt));
-        SetPlacement(x, y, width);
+        SetPlacement(x, y, width, persist: false);
         e.Handled = true;
     }
 
@@ -541,6 +634,7 @@ public sealed partial class MainWindow : Window
         if (stampDragMode is null) return;
         stampDragMode = null;
         e.Pointer.Capture(null);
+        PersistPlacement();
         e.Handled = true;
     }
 
@@ -603,9 +697,9 @@ public sealed partial class MainWindow : Window
         PlaceStampOnPageButton.IsVisible = signatureInfo is not null && !AllPages.IsChecked.GetValueOrDefault() &&
                                            stampPageIndex != pageIndex;
 
-    private static string SigningTimeLine(SigningTimeInfo? signingTime) => signingTime is null
+    private string SigningTimeLine(SigningTimeInfo? signingTime) => signingTime is null
         ? "Время подписания в CMS не указано."
-        : $"Время подписания: {signingTime.Time:dd.MM.yyyy HH:mm:ss} UTC";
+        : $"Время подписания: {FormatInSelectedZone(signingTime.Time, "dd.MM.yyyy HH:mm:ss")} ({SelectedTimeZone().Id})";
 
     private static DateTimeOffset ToUtc(DateTime value) => new DateTimeOffset(value).ToUniversalTime();
 

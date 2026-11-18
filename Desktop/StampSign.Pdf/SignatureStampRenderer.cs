@@ -9,8 +9,13 @@ public static class SignatureStampRenderer
     public const int Width = 190;
     public const int Height = 55;
 
-    public static byte[] Render(SignatureInfo signature)
+    public static byte[] Render(SignatureInfo signature, TimeZoneInfo? timeZone = null)
     {
+        if (timeZone is null)
+        {
+            try { timeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Moscow"); }
+            catch { timeZone = TimeZoneInfo.Local; }
+        }
         const int scale = 4;
         const int width = Width * scale;
         const int height = Height * scale;
@@ -23,13 +28,13 @@ public static class SignatureStampRenderer
         canvas.DrawRoundRect(new SKRect(2, 2, width - 2, height - 2), 20, 20, border);
 
         DrawLine(canvas, "ДОКУМЕНТ ПОДПИСАН ЭЛЕКТРОННОЙ ПОДПИСЬЮ", width / 2f, 55, 24.8f, color, true);
-        var validity = $"Действителен с {signature.NotBefore.ToLocalTime():dd.MM.yyyy} по {signature.NotAfter.ToLocalTime():dd.MM.yyyy}";
+        var validity = $"Действителен с {TimeZoneInfo.ConvertTime(signature.NotBefore, timeZone):dd.MM.yyyy} по {TimeZoneInfo.ConvertTime(signature.NotAfter, timeZone):dd.MM.yyyy}";
         var lines = new[]
         {
             $"Сертификат {signature.SerialHex}",
             $"Владелец {signature.Owner}",
             validity,
-            $"Дата и время подписания {signature.SigningTime?.ToLocalTime().ToString("dd.MM.yyyy HH:mm") ?? "—"}"
+            $"Дата и время подписания {(signature.SigningTime is { } time ? TimeZoneInfo.ConvertTime(time, timeZone).ToString("dd.MM.yyyy HH:mm") : "—")}"
         };
         var baselines = new[] { 100f, 130f, 160f, 190f };
         for (var i = 0; i < lines.Length; i++)
