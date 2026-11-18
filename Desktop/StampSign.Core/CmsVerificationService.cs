@@ -36,6 +36,7 @@ public static class CmsVerificationService
 
             var signatureValid = signer.Verify(certificate.GetPublicKey());
             var digestMatches = VerifyContentDigest(signer, content);
+            var signingTime = CmsSignatureReader.GetSigningTime(input);
             var contentMatches = input.Mode != SignatureMode.Attached || input.Document is null ||
                                  input.Document.AsSpan().SequenceEqual(content);
             var notes = new List<string>();
@@ -43,14 +44,23 @@ public static class CmsVerificationService
                 notes.Add("Выбранный PDF не совпадает с содержимым прикреплённой подписи.");
             if (!digestMatches)
                 notes.Add("Хэш подписанного содержимого не совпадает с messageDigest CMS.");
+            if (signingTime is { Source: SigningTimeSource.TimestampToken })
+                notes.Add("Время взято из RFC 3161 метки. Подпись TSA и доверие к TSA пока не проверяются.");
+            else if (signingTime is { Source: SigningTimeSource.SignedAttribute })
+                notes.Add("Время взято из атрибута signingTime, указанного подписантом; оно не подтверждено доверенной меткой TSA.");
             notes.Add("Проверка доверия к корневому УЦ и отзыва сертификата пока не выполняется.");
 
             var chain = ValidateIncludedChain(cms, certificate, notes);
+            var certificateTime = signingTime is null
+                ? CheckState.Unknown
+                : signingTime.Time >= ToUtc(certificate.NotBefore) && signingTime.Time <= ToUtc(certificate.NotAfter)
+                    ? CheckState.Valid
+                    : CheckState.Invalid;
 
             return new VerificationResult(
                 contentMatches && digestMatches ? signatureValid ? CheckState.Valid : CheckState.Invalid : CheckState.Invalid,
                 signatureValid ? CheckState.Valid : CheckState.Invalid,
-                CheckState.Unknown,
+                certificateTime,
                 chain,
                 notes);
         }
@@ -59,6 +69,8 @@ public static class CmsVerificationService
             return VerificationResult.Error($"Проверка CMS не выполнена: {ex.Message}");
         }
     }
+
+    private static DateTimeOffset ToUtc(DateTime value) => new DateTimeOffset(value).ToUniversalTime();
 
     private static bool VerifyContentDigest(SignerInformation signer, byte[] content)
     {

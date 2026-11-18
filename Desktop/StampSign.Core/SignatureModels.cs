@@ -22,6 +22,14 @@ public sealed record SignatureInfo(
     DateTimeOffset? SigningTime,
     SignatureMode Mode);
 
+public enum SigningTimeSource
+{
+    SignedAttribute,
+    TimestampToken
+}
+
+public sealed record SigningTimeInfo(DateTimeOffset Time, SigningTimeSource Source);
+
 public sealed record VerificationResult(
     CheckState Integrity,
     CheckState Signature,

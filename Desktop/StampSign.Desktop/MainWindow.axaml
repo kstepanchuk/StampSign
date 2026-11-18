@@ -1,4 +1,5 @@
 <Window xmlns="https://github.com/avaloniaui"
+        xmlns:shapes="using:Avalonia.Controls.Shapes"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="StampSign.Desktop.MainWindow"
         Title="StampSign" Width="1100" Height="740" MinWidth="880" MinHeight="600">
@@ -14,6 +15,15 @@
     <Border Grid.Row="1" Grid.Column="0" Margin="16" Background="#E8EBF0" CornerRadius="8">
       <Grid>
         <Image x:Name="PagePreview" Stretch="Uniform" Margin="22" />
+        <Canvas x:Name="StampOverlay" Margin="22" ClipToBounds="True" Focusable="True"
+                SizeChanged="StampOverlaySizeChanged"
+                PointerMoved="StampPointerMoved" PointerReleased="StampPointerReleased" KeyDown="StampOverlayKeyDown">
+          <Image x:Name="StampPreviewImage" IsHitTestVisible="False" Stretch="Fill" />
+          <Border x:Name="StampSelection" Background="Transparent" BorderBrush="#7255D9" BorderThickness="1"
+                  PointerPressed="StampMovePointerPressed" />
+          <shapes:Ellipse x:Name="StampResizeHandle" Width="12" Height="12" Fill="#7255D9"
+                          Stroke="White" StrokeThickness="1.5" PointerPressed="StampResizePointerPressed" />
+        </Canvas>
         <TextBlock x:Name="EmptyState" Text="Перетащите сюда PDF и .sig или откройте файл через приложение" HorizontalAlignment="Center"
                    VerticalAlignment="Center" Foreground="#596273" FontSize="19" />
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="12" Spacing="10">
@@ -40,13 +50,23 @@
         <TextBlock Text="Размещение штампа" FontSize="16" FontWeight="SemiBold" />
         <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="6">
           <TextBlock Grid.Row="0" Text="X, pt" VerticalAlignment="Center" />
-          <TextBox x:Name="XPosition" Grid.Row="0" Grid.Column="1" Text="20" />
+          <TextBox x:Name="XPosition" Grid.Row="0" Grid.Column="1" Text="20" TextChanged="PlacementFieldChanged" />
           <TextBlock Grid.Row="1" Text="Y, pt" VerticalAlignment="Center" />
-          <TextBox x:Name="YPosition" Grid.Row="1" Grid.Column="1" Text="20" />
+          <TextBox x:Name="YPosition" Grid.Row="1" Grid.Column="1" Text="20" TextChanged="PlacementFieldChanged" />
           <TextBlock Grid.Row="2" Text="Ширина, pt" VerticalAlignment="Center" />
-          <TextBox x:Name="StampWidth" Grid.Row="2" Grid.Column="1" Text="190" />
+          <TextBox x:Name="StampWidth" Grid.Row="2" Grid.Column="1" Text="190" TextChanged="PlacementFieldChanged" />
         </Grid>
-        <CheckBox x:Name="AllPages" Content="Штамп на всех страницах" IsChecked="True" />
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <Button Content="Лево" Click="PlaceBottomLeft" />
+          <Button Content="Центр" Click="PlaceBottomCenter" />
+          <Button Content="Право" Click="PlaceBottomRight" />
+          <Button Content="Верх" Click="PlaceTopRight" />
+        </StackPanel>
+        <CheckBox x:Name="AllPages" Content="Штамп на всех страницах" IsChecked="False" Click="AllPagesChanged" />
+        <Button x:Name="PlaceStampOnPageButton" Content="Поставить штамп на эту страницу" Click="PlaceStampOnCurrentPage" IsVisible="False" />
+        <TextBlock Text="Тяните штамп для перемещения, ручку — для изменения ширины. Стрелки двигают на 1 pt; Alt отключает прилипание."
+                   TextWrapping="Wrap" Foreground="#596273" FontSize="12" />
+        <CheckBox x:Name="EmbedEvidence" Content="Вложить исходный PDF и .sig для последующей проверки" IsChecked="True" />
         <Button x:Name="SaveButton" Content="Сохранить PDF со штампом…" Click="SaveStampedPdf" IsEnabled="False" />
         <Button x:Name="PadesButton" Content="Подписать PDF в PAdES…" Click="SignPadesPdf" IsEnabled="False" />
       </StackPanel>
