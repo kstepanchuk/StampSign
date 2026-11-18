@@ -117,7 +117,9 @@ public sealed class PadesSigningHost
             var signatureInfo = new SignatureInfo(cert.SerialHex, OwnerName(cert.Subject),
                 cert.NotBefore, cert.NotAfter, DateTimeOffset.Now, SignatureMode.Detached);
             tempStamp = Path.Combine(Path.GetTempPath(), $"StampSign-{Guid.NewGuid():N}.png");
-            tempPdf = Path.Combine(Path.GetTempPath(), $"StampSign-{Guid.NewGuid():N}.signed.pdf");
+            var destinationDirectory = Path.GetDirectoryName(Path.GetFullPath(outputPath))
+                ?? throw new InvalidDataException("Не удалось определить папку сохранения PDF.");
+            tempPdf = Path.Combine(destinationDirectory, $".StampSign-{Guid.NewGuid():N}.signed.tmp.pdf");
             await File.WriteAllBytesAsync(tempStamp, SignatureStampRenderer.Render(signatureInfo), timeout.Token);
 
             var callbackUrl = new Uri(baseUrl, $"{nonce}/pades/sign-data").AbsoluteUri;
