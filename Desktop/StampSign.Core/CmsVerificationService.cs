@@ -67,7 +67,8 @@ public static class CmsVerificationService
         var attribute = Org.BouncyCastle.Asn1.Cms.Attribute.GetInstance(attributes[0]);
         if (attribute.AttrValues.Count != 1) return false;
         var expected = Asn1OctetString.GetInstance(attribute.AttrValues[0]).GetOctets();
-        var actual = Org.BouncyCastle.Security.DigestUtilities.CalculateDigest(signer.DigestAlgOid, content);
+        var digestOid = signer.DigestAlgorithmID.Algorithm.Id;
+        var actual = Org.BouncyCastle.Security.DigestUtilities.CalculateDigest(digestOid, content);
         return expected.AsSpan().SequenceEqual(actual);
     }
 
