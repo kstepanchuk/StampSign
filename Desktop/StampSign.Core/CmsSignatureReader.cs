@@ -72,7 +72,7 @@ public static class CmsSignatureReader
         if (signedAttributes is not { Count: 1 }) return null;
         var signingTime = Org.BouncyCastle.Asn1.Cms.Attribute.GetInstance(signedAttributes[0]);
         if (signingTime.AttrValues.Count != 1) return null;
-        var date = Org.BouncyCastle.Asn1.Cms.Time.GetInstance(signingTime.AttrValues[0]).Date;
+        var date = Org.BouncyCastle.Asn1.Cms.Time.GetInstance(signingTime.AttrValues[0]).ToDateTime();
         return new SigningTimeInfo(ToUtc(date), SigningTimeSource.SignedAttribute);
     }
 

@@ -140,12 +140,13 @@ public sealed partial class MainWindow : Window
                 var cert = CmsSignatureReader.GetSignerCertificate(embeddedPades);
                 var signingTime = CmsSignatureReader.GetSigningTime(embeddedPades);
                 var commonName = cert.SubjectDN.GetValueList(X509Name.CN).FirstOrDefault()?.ToString();
-                SetSignatureInfo(new SignatureInfo(Convert.ToHexString(cert.SerialNumber.ToByteArrayUnsigned()),
+                var currentSignature = new SignatureInfo(Convert.ToHexString(cert.SerialNumber.ToByteArrayUnsigned()),
                     commonName ?? cert.SubjectDN.ToString(), ToUtc(cert.NotBefore), ToUtc(cert.NotAfter), signingTime?.Time,
-                    SignatureMode.Detached));
+                    SignatureMode.Detached);
+                SetSignatureInfo(currentSignature);
                 var verification = CmsVerificationService.Verify(embeddedPades);
-                SignatureDetails.Text = $"Встроенная PAdES подпись\n{signatureInfo.Owner}\nСертификат: {signatureInfo.SerialHex}\n" +
-                    $"Действует: {signatureInfo.NotBefore.ToLocalTime():dd.MM.yyyy} — {signatureInfo.NotAfter.ToLocalTime():dd.MM.yyyy}\n" +
+                SignatureDetails.Text = $"Встроенная PAdES подпись\n{currentSignature.Owner}\nСертификат: {currentSignature.SerialHex}\n" +
+                    $"Действует: {currentSignature.NotBefore.ToLocalTime():dd.MM.yyyy} — {currentSignature.NotAfter.ToLocalTime():dd.MM.yyyy}\n" +
                     SigningTimeLine(signingTime);
                 VerificationDetails.Text = $"Целостность: {verification.Integrity}\nЭЦП: {verification.Signature}\n" +
                     $"Сертификат в указанное время: {verification.CertificateTime}\nЦепочка: {verification.Chain}\n" +
