@@ -17,6 +17,30 @@ internal static class PdfCpuBridge
         string signature, CancellationToken cancellationToken) =>
         RunAsync(["attach", input, output, originalPdf, signature], cancellationToken);
 
+    public static async Task<string?> ExtractAttachmentsAsync(string input,
+        CancellationToken cancellationToken)
+    {
+        var outputDirectory = Path.Combine(Path.GetTempPath(), $"StampSign-attachments-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outputDirectory);
+        try
+        {
+            var exitCode = await RunProcessAsync(["extract-attachments", input, outputDirectory], cancellationToken);
+            if (exitCode == 2)
+            {
+                Directory.Delete(outputDirectory);
+                return null;
+            }
+            if (Directory.EnumerateFiles(outputDirectory).Any()) return outputDirectory;
+            Directory.Delete(outputDirectory);
+            return null;
+        }
+        catch
+        {
+            if (Directory.Exists(outputDirectory)) Directory.Delete(outputDirectory, recursive: true);
+            throw;
+        }
+    }
+
     public static Task SignPadesAsync(string input, string output, string pngStamp, double x, double y,
         double width, int? pageIndex, string callbackUrl, string signerName, CancellationToken cancellationToken) =>
         RunAsync(["pades", input, output, pngStamp,

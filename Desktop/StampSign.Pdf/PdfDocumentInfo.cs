@@ -38,6 +38,9 @@ public sealed class PdfDocumentService
         string signature, CancellationToken cancellationToken = default) =>
         PdfCpuBridge.AddAttachmentsAsync(stampedPdf, output, originalPdf, signature, cancellationToken);
 
+    public Task<string?> ExtractAttachmentsAsync(string path, CancellationToken cancellationToken = default) =>
+        PdfCpuBridge.ExtractAttachmentsAsync(path, cancellationToken);
+
     public Task SignPadesAsync(string input, string output, string pngStamp, double x, double y, double width,
         int? pageIndex, string callbackUrl, string signerName, CancellationToken cancellationToken = default) =>
         PdfCpuBridge.SignPadesAsync(input, output, pngStamp, x, y, width, pageIndex, callbackUrl, signerName,

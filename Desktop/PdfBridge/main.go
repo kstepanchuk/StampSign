@@ -21,10 +21,11 @@ import (
 )
 
 var errNoPadesSignature = fmt.Errorf("no PAdES signature found")
+var errNoPdfEvidence = fmt.Errorf("no embedded source PDF and signature pair found")
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		if err == errNoPadesSignature {
+		if err == errNoPadesSignature || err == errNoPdfEvidence {
 			os.Exit(2)
 		}
 		fmt.Fprintln(os.Stderr, err)
@@ -72,6 +73,37 @@ func run(args []string) error {
 			return fmt.Errorf("usage: attach stamped.pdf output.pdf original.pdf signature.sig")
 		}
 		return api.AddAttachmentsFile(ctx, args[1], args[2], []string{args[3], args[4]}, false, nil)
+	case "extract-attachments":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: extract-attachments input.pdf output-directory")
+		}
+		input, err := os.Open(args[1])
+		if err != nil {
+			return err
+		}
+		attachments, err := api.Attachments(ctx, input, nil)
+		if err != nil {
+			_ = input.Close()
+			return err
+		}
+		var originalID, signatureID string
+		for _, attachment := range attachments {
+			extension := strings.ToLower(filepath.Ext(attachment.FileName))
+			if extension == ".pdf" && originalID == "" {
+				originalID = attachment.ID
+			}
+			if (extension == ".sig" || extension == ".p7s" || extension == ".p7m" || extension == ".cms") && signatureID == "" {
+				signatureID = attachment.ID
+			}
+		}
+		if originalID == "" || signatureID == "" {
+			_ = input.Close()
+			return errNoPdfEvidence
+		}
+		if err := input.Close(); err != nil {
+			return err
+		}
+		return api.ExtractAttachmentsFile(ctx, args[1], args[2], []string{originalID, signatureID}, nil)
 	case "pades":
 		return signPades(ctx, args[1:])
 	case "extract-pades":

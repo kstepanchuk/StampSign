@@ -16,6 +16,10 @@ public sealed partial class MainWindow : Window
 {
     private string? pdfPath;
     private string? signaturePath;
+    private string? sourceDocumentPath;
+    private string? evidenceAttachmentsDirectory;
+    private bool fromEvidence;
+    private bool readOnlyPdf;
     private SignatureInfo? signatureInfo;
     private PdfDocumentInfo? pdfInfo;
     private int pageIndex;
@@ -53,6 +57,7 @@ public sealed partial class MainWindow : Window
         DragDrop.SetAllowDrop(this, true);
         DragDrop.AddDragOverHandler(this, OnDragOver);
         DragDrop.AddDropHandler(this, OnDrop);
+        Closed += (_, _) => DeleteEvidenceAttachmentsDirectory();
     }
 
     public async Task OpenFiles(IEnumerable<string> paths)
@@ -66,17 +71,26 @@ public sealed partial class MainWindow : Window
         {
             if (droppedPdf is not null)
             {
+                ClearEvidenceAttachments();
                 pdfPath = droppedPdf;
                 signaturePath = null;
                 SetSignatureInfo(null);
+                SaveButton.IsEnabled = false;
                 pdfInfo = pdf.Open(pdfPath);
                 pageIndex = 0;
                 stampPageIndex = pageIndex;
-                SetSigningAvailable(true);
+                readOnlyPdf = false;
+                SetSigningAvailable(false);
                 RenderCurrentPage();
                 ApplySavedPlacement();
+                var embeddedEvidence = droppedSignature is null && await TryLoadEmbeddedEvidenceAttachments(pdfPath);
+                SetSigningAvailable(!embeddedEvidence);
             }
-            if (droppedSignature is not null) signaturePath = droppedSignature;
+            if (droppedSignature is not null)
+            {
+                if (droppedPdf is null) ClearEvidenceAttachments();
+                signaturePath = droppedSignature;
+            }
             UpdateSummary();
             await RefreshVerification();
         }
@@ -130,8 +144,65 @@ public sealed partial class MainWindow : Window
     }
 
     private void UpdateSummary() => FileSummary.Text = string.Join("   ·   ",
-        new[] { pdfPath is null ? null : Path.GetFileName(pdfPath), signaturePath is null ? null : Path.GetFileName(signaturePath) }
+        new[] { pdfPath is null ? null : Path.GetFileName(pdfPath), signaturePath is null ? null : Path.GetFileName(signaturePath),
+            fromEvidence && sourceDocumentPath is not null ? $"Исходник: {Path.GetFileName(sourceDocumentPath)}" : null }
             .Where(value => value is not null));
+
+    private async Task<bool> TryLoadEmbeddedEvidenceAttachments(string path)
+    {
+        string? directory = null;
+        try
+        {
+            directory = await pdf.ExtractAttachmentsAsync(path);
+            if (directory is null) return false;
+            var files = Directory.EnumerateFiles(directory).ToArray();
+            var original = files.FirstOrDefault(file => Path.GetExtension(file).Equals(".pdf", StringComparison.OrdinalIgnoreCase));
+            var signature = files.FirstOrDefault(IsSignatureFile);
+            if (original is null || signature is null)
+            {
+                Directory.Delete(directory, recursive: true);
+                return false;
+            }
+
+            evidenceAttachmentsDirectory = directory;
+            sourceDocumentPath = original;
+            signaturePath = signature;
+            fromEvidence = true;
+            readOnlyPdf = true;
+            EmbeddedEvidenceDetails.Text = "В этом PDF найдены вложенные исходный документ и подпись. Проверка использует вложенный исходник; этот уже проштампованный PDF нельзя штамповать повторно.";
+            EmbeddedEvidenceDetails.IsVisible = true;
+            SetSigningAvailable(false);
+            SaveButton.IsEnabled = false;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (directory is not null && Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+            EmbeddedEvidenceDetails.Text = $"Не удалось прочитать вложения PDF: {ex.Message}";
+            EmbeddedEvidenceDetails.IsVisible = true;
+            return false;
+        }
+    }
+
+    private void ClearEvidenceAttachments()
+    {
+        DeleteEvidenceAttachmentsDirectory();
+        sourceDocumentPath = null;
+        fromEvidence = false;
+        readOnlyPdf = false;
+        EmbeddedEvidenceDetails.Text = string.Empty;
+        EmbeddedEvidenceDetails.IsVisible = false;
+    }
+
+    private void DeleteEvidenceAttachmentsDirectory()
+    {
+        if (evidenceAttachmentsDirectory is not null && Directory.Exists(evidenceAttachmentsDirectory))
+        {
+            try { Directory.Delete(evidenceAttachmentsDirectory, recursive: true); }
+            catch { }
+        }
+        evidenceAttachmentsDirectory = null;
+    }
 
     private async Task RefreshVerification()
     {
@@ -143,11 +214,16 @@ public sealed partial class MainWindow : Window
                 var embeddedPades = await pdf.ExtractPadesSignatureAsync(pdfPath);
                 if (embeddedPades is null)
                 {
+                    readOnlyPdf = false;
+                    SetSigningAvailable(pdfPath is not null);
                     SignatureDetails.Text = "В PDF нет встроенной PAdES подписи.";
                     VerificationDetails.Text = string.Empty;
                     SaveButton.IsEnabled = false;
                     return;
                 }
+                readOnlyPdf = true;
+                SetSigningAvailable(false);
+                SaveButton.IsEnabled = false;
                 var cert = CmsSignatureReader.GetSignerCertificate(embeddedPades);
                 var signingTime = CmsSignatureReader.GetSigningTime(embeddedPades);
                 var commonName = cert.SubjectDN.GetValueList(X509Name.CN).FirstOrDefault()?.ToString();
@@ -174,7 +250,7 @@ public sealed partial class MainWindow : Window
         }
         try
         {
-            var input = CmsSignatureReader.Read(signaturePath, pdfPath);
+            var input = CmsSignatureReader.Read(signaturePath, sourceDocumentPath ?? pdfPath);
             if (input.Mode == SignatureMode.Detached && pdfPath is null)
             {
                 SetSignatureInfo(null);
@@ -219,7 +295,7 @@ public sealed partial class MainWindow : Window
             VerificationDetails.Text = $"Целостность: {verification.Integrity}\n" +
                 $"Сертификат в указанное время: {verification.CertificateTime}\n" +
                 $"ЭЦП: {verification.Signature}\n" + string.Join("\n", verification.Notes);
-            SaveButton.IsEnabled = pdfPath is not null && signatureInfo is not null;
+        SaveButton.IsEnabled = pdfPath is not null && signatureInfo is not null && !readOnlyPdf;
             EmptyState.IsVisible = pdfInfo is null;
         }
         catch (Exception ex)
@@ -262,7 +338,7 @@ public sealed partial class MainWindow : Window
 
     private async void SaveStampedPdf(object? sender, RoutedEventArgs e)
     {
-        if (pdfPath is null || signaturePath is null || signatureInfo is null) return;
+        if (pdfPath is null || signaturePath is null || signatureInfo is null || readOnlyPdf) return;
         var selected = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = "Сохранить PDF со штампом",
@@ -304,7 +380,7 @@ public sealed partial class MainWindow : Window
 
     private async void SignPadesPdf(object? sender, RoutedEventArgs e)
     {
-        if (pdfPath is null) return;
+        if (pdfPath is null || readOnlyPdf) return;
         var selected = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = "Сохранить PDF с PAdES подписью",
@@ -339,13 +415,13 @@ public sealed partial class MainWindow : Window
         finally
         {
             SetSigningAvailable(pdfPath is not null);
-            PadesButton.IsEnabled = pdfPath is not null;
+            PadesButton.IsEnabled = pdfPath is not null && !readOnlyPdf;
         }
     }
 
     private async void CreateCmsSignature(object? sender, RoutedEventArgs e)
     {
-        if (pdfPath is null) return;
+        if (pdfPath is null || readOnlyPdf) return;
         var attached = (CmsMode.SelectedItem as ComboBoxItem)?.Tag?.ToString() == "attached";
         var extension = ".sig";
         var suggestedName = attached
@@ -383,7 +459,7 @@ public sealed partial class MainWindow : Window
     {
         SigningActionButton.IsEnabled = available;
         CreateSignatureButton.IsEnabled = available;
-        PadesButton.IsEnabled = available;
+        PadesButton.IsEnabled = available && !readOnlyPdf;
     }
 
     private void SetSignatureInfo(SignatureInfo? value)
@@ -401,7 +477,7 @@ public sealed partial class MainWindow : Window
 
     private void RenderStampPreview()
     {
-        if (signatureInfo is null || stampBitmap is null || pageBitmap is null || pdfInfo is null ||
+        if (readOnlyPdf || signatureInfo is null || stampBitmap is null || pageBitmap is null || pdfInfo is null ||
             (!AllPages.IsChecked.GetValueOrDefault() && stampPageIndex != pageIndex) ||
             StampOverlay.Bounds.Width <= 0 || StampOverlay.Bounds.Height <= 0 || !TryGetPageGeometry(out var geometry))
         {

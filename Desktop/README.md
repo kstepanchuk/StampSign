@@ -12,6 +12,7 @@ The `StampSign.Desktop.slnx` solution is the shared .NET/Avalonia StampSign appl
 - PAdES signing reserves the PDF `/ByteRange` with pdfcpu-sign and requests the detached CMS from CryptoPro in the local browser page.
 - PAdES extraction returns the CMS container and concatenated signed byte ranges to the shared CMS verifier when a signed PDF is opened.
 - PDF and `.sig` files can be opened from the file picker, passed as application launch arguments, or dragged together into the window. A detached `.sig` prompts for its source PDF; an attached `.sig` can restore its embedded PDF.
+- Evidence PDFs containing an embedded source PDF and CMS/CAdES signature are recognized on open. StampSign verifies the signature against the embedded source and marks the evidence PDF read-only to prevent double stamping.
 
 PDF editing intentionally uses pdfcpu (Apache-2.0); PDFsharp was excluded because its current licensing would conflict with StampSign's MIT distribution. The crypto-arm implementation is not copied.
 

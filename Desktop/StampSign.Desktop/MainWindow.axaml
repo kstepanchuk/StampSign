@@ -37,6 +37,7 @@
       <StackPanel Spacing="12">
         <TextBlock Text="Подпись" FontSize="18" FontWeight="SemiBold" />
         <TextBlock x:Name="SignatureDetails" Text="Откройте файл подписи, чтобы посмотреть сертификат и проверить документ." TextWrapping="Wrap" />
+        <TextBlock x:Name="EmbeddedEvidenceDetails" TextWrapping="Wrap" Foreground="#596273" IsVisible="False" />
         <ComboBox x:Name="StampTimeZone" SelectedIndex="1" SelectionChanged="StampTimeZoneChanged">
           <ComboBoxItem Content="Калининград (UTC+2)" Tag="Europe/Kaliningrad" />
           <ComboBoxItem Content="Москва (UTC+3)" Tag="Europe/Moscow" />
