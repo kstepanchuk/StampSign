@@ -107,8 +107,15 @@ public sealed partial class MainWindow : Window
             if (pdfPath is null && input.EmbeddedContent is { Length: > 5 } embedded &&
                 embedded.AsSpan(0, 5).SequenceEqual("%PDF-"u8))
             {
-                pdfPath = Path.Combine(Path.GetTempPath(), $"StampSign-{Guid.NewGuid():N}.pdf");
-                await File.WriteAllBytesAsync(pdfPath, embedded);
+                // Keep a recovered document beside the attached signature so it survives
+                // application exit and can be opened by the user independently.
+                var recoveredPath = Path.Combine(Path.GetDirectoryName(signaturePath)!,
+                    Path.GetFileNameWithoutExtension(signaturePath) + ".pdf");
+                if (File.Exists(recoveredPath))
+                    recoveredPath = Path.Combine(Path.GetDirectoryName(signaturePath)!,
+                        Path.GetFileNameWithoutExtension(signaturePath) + $".recovered-{Guid.NewGuid():N}.pdf");
+                await File.WriteAllBytesAsync(recoveredPath, embedded);
+                pdfPath = recoveredPath;
                 pdfInfo = pdf.Open(pdfPath);
                 pageIndex = 0;
                 SetSigningAvailable(true);
@@ -252,10 +259,13 @@ public sealed partial class MainWindow : Window
         if (pdfPath is null) return;
         var attached = (CmsMode.SelectedItem as ComboBoxItem)?.Tag?.ToString() == "attached";
         var extension = ".sig";
+        var suggestedName = attached
+            ? Path.GetFileNameWithoutExtension(pdfPath) + ".attached.sig"
+            : Path.GetFileNameWithoutExtension(pdfPath) + ".sig";
         var selected = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = attached ? "Сохранить прикреплённую CMS подпись (.sig)" : "Сохранить откреплённую CMS подпись (.sig)",
-            SuggestedFileName = Path.GetFileName(pdfPath) + extension,
+            SuggestedFileName = suggestedName,
             FileTypeChoices = [new FilePickerFileType(attached ? "Прикреплённая CMS" : "Откреплённая CMS")
                 { Patterns = ["*" + extension] }]
         });
