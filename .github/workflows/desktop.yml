@@ -106,4 +106,5 @@ jobs:
             release-assets/StampSign-win-x64/StampSign-win-x64.zip \
             release-assets/StampSign-osx-arm64/StampSign-osx-arm64.dmg \
             release-assets/StampSign-osx-x64/StampSign-osx-x64.dmg \
+            --repo "$GITHUB_REPOSITORY" \
             --title "StampSign ${GITHUB_REF_NAME}" --generate-notes
