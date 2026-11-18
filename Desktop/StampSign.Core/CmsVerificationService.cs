@@ -62,8 +62,10 @@ public static class CmsVerificationService
 
     private static bool VerifyContentDigest(SignerInformation signer, byte[] content)
     {
-        var attribute = signer.SignedAttributes?.Get(PkcsObjectIdentifiers.Pkcs9AtMessageDigest);
-        if (attribute is null || attribute.AttrValues.Count != 1) return false;
+        var attributes = signer.SignedAttributes?.GetAll(PkcsObjectIdentifiers.Pkcs9AtMessageDigest);
+        if (attributes is null || attributes.Count != 1) return false;
+        var attribute = Org.BouncyCastle.Asn1.Cms.Attribute.GetInstance(attributes[0]);
+        if (attribute.AttrValues.Count != 1) return false;
         var expected = Asn1OctetString.GetInstance(attribute.AttrValues[0]).GetOctets();
         var actual = Org.BouncyCastle.Security.DigestUtilities.CalculateDigest(signer.DigestAlgOid, content);
         return expected.AsSpan().SequenceEqual(actual);
